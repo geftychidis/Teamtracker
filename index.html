@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Παρακολούθηση Προφίλ Υποψηφίων (Real-Time)</title>
+    <!-- 1. Φόρτωση Firebase Libraries -->
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-database.js"></script>
+    <style>
+        /* Γενικό στυλ */
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f4f8; /* Light blue background */
+            color: #334155;
+            min-height: 100vh;
+        }
+        h1 {
+            color: #1e3a8a; /* Dark blue */
+            border-bottom: 3px solid #60a5fa;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+            text-align: center;
+            font-weight: 700;
+            font-size: 2.5em;
+        }
+        .app-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Στυλ Profile Container */
+        .profile-container {
+            background-color: #e0f2fe; /* Very light blue */
+            border: 1px solid #93c5fd;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+        }
+        .profile-container.closed {
+            background-color: #f7f9fc;
+            opacity: 0.8;
+        }
+        .profile-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            cursor: pointer;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #bfdbfe;
+        }
+        .profile-title {
+            color: #1d4ed8;
+            margin: 0;
+            font-size: 1.6em;
+            font-weight: 600;
+        }
+        .profile-info {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .target-display {
+            font-weight: bold;
+            color: #059669; /* Green */
+            background-color: #d1fae5;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .target-display.locked {
+            color: #dc2626; /* Red */
+            background-color: #fee2e2;
+        }
+        .target-input {
+            width: 50px;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .toggle-icon {
+            font-size: 20px;
+            color: #1e3a8a;
+            transition: transform 0.3s ease;
+        }
+        .closed .toggle-icon {
+            transform: rotate(-90deg);
+        }
+
+        /* Στυλ Υποψηφίων */
+        .candidate-list {
+            list-style: none;
+            padding: 0;
+        }
+        .candidate-row {
+            display: flex;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px dashed #e5e7eb;
+            transition: background-color 0.2s;
+        }
+        .candidate-row:hover {
+            background-color: #f7f9fc;
+        }
+        .candidate-name {
+            flex-grow: 1;
+            font-weight: 500;
+            color: #334155;
+            padding-left: 10px;
+            cursor: pointer;
+            outline: none;
+            border-bottom: 1px dashed transparent;
+        }
+        .candidate-name:focus {
+            border-bottom: 1px dashed #007bff;
+        }
+        .status-select {
+            padding: 5px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            margin-right: 10px;
+            background-color: #fff;
+            color: #4b5563;
+        }
+        
+        /* Στυλ Statuses */
+        .status-NoStatus { background-color: #fef3c7; color: #92400e; } /* Yellow/Brown */
+        .status-Screening { background-color: #bfdbfe; color: #1e40af; } /* Light Blue */
+        .status-Interview { background-color: #d8b4fe; color: #7e22ce; } /* Purple */
+        .status-Accepted { background-color: #a7f3d0; color: #065f46; font-weight: bold; } /* Green */
+        .status-Rejected { background-color: #fecaca; color: #991b1b; } /* Red */
+
+        .comment-input {
+            margin-left: 20px;
+            flex-grow: 2;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+            min-width: 200px;
+            height: 34px;
+            transition: border-color 0.2s;
+        }
+        .comment-input:focus {
+            border-color: #3b82f6;
+            outline: none;
+        }
+
+        /* Buttons */
+        .add-button {
+            background-color: #10b981;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 600;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        .add-button:hover {
+            background-color: #059669;
+        }
+        .add-button:active {
+            transform: scale(0.98);
+        }
+
+        /* Στυλ Footer - Για εμφάνιση χρήστη */
+        .footer {
+            margin-top: 40px;
+            padding: 15px;
+            background-color: #dbeafe;
+            border-radius: 8px;
+            text-align: center;
+            color: #1e40af;
+            font-weight: 500;
+        }
+
+        /* Custom Modal (αντί για alert/prompt) */
+        .custom-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+        .modal-content h3 {
+            margin-top: 0;
+            color: #1e3a8a;
+        }
+        .modal-input {
+            width: 90%;
+            padding: 10px;
+            margin: 10px 0 20px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .modal-buttons button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 0 10px;
+            font-weight: 600;
+        }
+        .modal-buttons .confirm-btn {
+            background-color: #10b981;
+            color: white;
+        }
+        .modal-buttons .cancel-btn {
+            background-color: #f3f4f6;
+            color: #4b5563;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <h1>Παρακολούθηση Προσλήψεων Real-Time</h1>
+        <div id="profiles-container">
+            <!-- Εδώ θα μπουν τα προφίλ -->
+        </div>
+        <div class="footer">
+            <span>Συνδεδεμένος ως: <span id="user-display">Φορτώνει...</span></span>
+        </div>
+    </div>
+    
+    <!-- Custom Modal Structure -->
+    <div id="custom-modal" class="custom-modal">
+        <div class="modal-content">
+            <h3 id="modal-title"></h3>
+            <p id="modal-message"></p>
+            <input type="text" id="modal-input" class="modal-input" style="display: none;">
+            <div class="modal-buttons">
+                <button id="modal-cancel" class="cancel-btn" style="display: none;">Ακύρωση</button>
+                <button id="modal-confirm" class="confirm-btn">ΟΚ</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 2. FIREBASE CONFIGURATION (ΤΑ ΔΙΚΑ ΣΑΣ ΚΛΕΙΔΙΑ)
+        const firebaseConfig = {
+            apiKey: "AIzaSyAXFlEK9ehNqUSbHE2DFGt4tE0uVll7WQs",
+            authDomain: "team-tracker-c123a.firebaseapp.com",
+            databaseURL: "https://team-tracker-c123a-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "team-tracker-c123a",
+            storageBucket: "team-tracker-c123a.firebasestorage.app",
+            messagingSenderId: "201123283369",
+            appId: "1:201123283369:web:ae0c28d6d8a637aa0404b8",
+            measurementId: "G-5EHRR21L4W"
+        };
+        
+        // 3. Αρχικοποίηση Firebase και Database
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const ref = db.ref('recruitment-profiles'); // Κεντρικός κόμβος
+        
+        // 4. ΠΛΗΡΗ ΑΡΧΙΚΑ ΔΕΔΟΜΕΝΑ (Αν η βάση είναι κενή, αυτά θα φορτωθούν)
+        let profilesData = {
+            "Frontend": {
+                title: 'Frontend Developers',
+                targetCount: 1,
+                candidates: [
+                    { name: 'Arabantzis', comment: '', status: 'NoStatus' },
+                    { name: 'Kyrosis', comment: '', status: 'NoStatus' },
+                    { name: 'Kasara', comment: '', status: 'NoStatus' },
+                    { name: 'Chalaris', comment: '', status: 'NoStatus' }
+                ],
+                isExpanded: true
+            },
+            "Backend": {
+                title: 'Backend Engineers',
+                targetCount: 1,
+                candidates: [
+                    { name: 'Geroutskis', comment: '', status: 'NoStatus' },
+                    { name: 'Tatsis', comment: '', status: 'NoStatus' }
+                ],
+                isExpanded: true
+            },
+            "SWTeamLead": {
+                title: 'SW Team Lead',
+                targetCount: 1,
+                candidates: [
+                    { name: 'Chrisodoulou', comment: '', status: 'NoStatus' },
+                    { name: 'Pappas', comment: '', status: 'NoStatus' },
+                    { name: 'Dimou', comment: 'Μου εκανε καλη εντυπωση το προφιλ του, πιστευω μπορει να υποστηριξει αρκετα senior θεση.', status: 'NoStatus' },
+                    { name: 'Patergianakis', comment: '', status: 'NoStatus' }
+                ],
+                isExpanded: true
+            },
+            "SystemArchitect": {
+                title: 'System Architect',
+                targetCount: 1,
+                candidates: [
+                    { name: 'Bampladimos', comment: '', status: 'NoStatus' },
+                    { name: 'Dadoros', comment: '', status: 'NoStatus' }
+                ],
+                isExpanded: true
+            },
+            "DevOps": {
+                title: 'DevOps',
+                targetCount: 1,
+                candidates: [
+                    { name: 'Triantafyllopoulos', comment: '', status: 'NoStatus' },
+                    { name: 'Saroukiadis', comment: '', status: 'NoStatus' }
+                ],
+                isExpanded: true
+            },
+            "Other": {
+                title: 'Other Profiles',
+                targetCount: 1,
+                candidates: [
+                    { name: 'Progias', comment: '', status: 'NoStatus' },
+                    { name: 'Venianakis', comment: '', status: 'NoStatus' }
+                ],
+                isExpanded: true
+            },
+            "AIEngineers": {
+                title: 'AI Engineers',
+                targetCount: 2,
+                candidates: [], // Κενή λίστα
+                isExpanded: true
+            }
+        };
+
+        const statusOptionsMap = {
+            'NoStatus': 'Αναμονή',
+            'Screening': 'Επισκόπηση',
+            'Interview': 'Συνέντευξη',
+            'Accepted': 'Προσλήφθηκε',
+            'Rejected': 'Απορρίφθηκε'
+        };
+
+        // 5. Βοηθητική Συνάρτηση για Custom Modal
+        function showCustomModal(type, title, message, defaultValue = '') {
+            return new Promise(resolve => {
+                const modal = document.getElementById('custom-modal');
+                const modalTitle = document.getElementById('modal-title');
+                const modalMessage = document.getElementById('modal-message');
+                const modalInput = document.getElementById('modal-input');
+                const modalConfirm = document.getElementById('modal-confirm');
+                const modalCancel = document.getElementById('modal-cancel');
+
+                modalTitle.textContent = title;
+                modalMessage.textContent = message;
+
+                modalInput.style.display = 'none';
+                modalCancel.style.display = 'none';
+
+                if (type === 'alert') {
+                    modalConfirm.textContent = 'Εντάξει';
+                    modalConfirm.onclick = () => { modal.style.display = 'none'; resolve(true); };
+                } else if (type === 'prompt') {
+                    modalInput.value = defaultValue;
+                    modalInput.style.display = 'block';
+                    modalCancel.style.display = 'inline-block';
+                    modalConfirm.textContent = 'Επιβεβαίωση';
+
+                    modalConfirm.onclick = () => { modal.style.display = 'none'; resolve(modalInput.value); };
+                    modalCancel.onclick = () => { modal.style.display = 'none'; resolve(null); };
+                }
+
+                modal.style.display = 'flex';
+            });
+        }
+        
+        // 6. Εμφάνιση Ψευδώνυμου Χρήστη
+        let userId = localStorage.getItem('userAlias');
+        if (!userId) {
+            showCustomModal('prompt', 'Ταυτοποίηση Χρήστη', 'Εισάγετε το όνομά σας ή ένα ψευδώνυμο:', 'Χρήστης ' + Math.floor(Math.random() * 1000)).then(alias => {
+                if (alias && alias.trim()) {
+                    userId = alias.trim();
+                } else {
+                    userId = 'Ανώνυμος';
+                }
+                localStorage.setItem('userAlias', userId);
+                document.getElementById('user-display').textContent = userId;
+            });
+        } else {
+            document.getElementById('user-display').textContent = userId;
+        }
+
+        // 7. Λήψη Δεδομένων από Firebase (onSnapshot)
+        ref.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data && data['recruitment-profiles']) {
+                 // Έλεγχος για τη δομή που περιμέναμε
+                profilesData = data['recruitment-profiles'];
+            } else if (data) {
+                // Αν τα δεδομένα δεν είναι κάτω από 'recruitment-profiles' (συνήθως μετά την πρώτη φόρτωση)
+                profilesData = data;
+            } else {
+                // Αν η βάση είναι κενή, ανεβάζουμε τα αρχικά δεδομένα
+                ref.set(profilesData); // Θα πυροδοτήσει ξανά το 'value' listener
+            }
+            renderApp();
+        }, (error) => {
+            console.error("Firebase Read Failed: " + error.code);
+            showCustomModal('alert', 'Σφάλμα Σύνδεσης', 'Αποτυχία ανάγνωσης δεδομένων από το Firebase. Ελέγξτε τις ρυθμίσεις σας ή τη σύνδεση.');
+        });
+
+        // 8. Αποθήκευση Δεδομένων στο Firebase
+        function saveData() {
+            // Log της αλλαγής και αποθήκευση
+            db.ref('lastUpdate').set({
+                user: userId || 'N/A',
+                timestamp: new Date().toLocaleString()
+            });
+            ref.set(profilesData)
+              .catch(error => console.error("Firebase Write Failed: ", error));
+        }
+
+        // 9. Λογική Κλειδώματος
+        function checkProfileLock(profileKey, container) {
+            const profile = profilesData[profileKey];
+            const acceptedCount = profile.candidates.filter(c => c.status === 'Accepted').length;
+            const target = parseInt(profile.targetCount, 10);
+            const isLocked = acceptedCount >= target && target > 0;
+            
+            // Ενημέρωση κλειδώματος του container
+            container.classList.toggle('profile-locked', isLocked);
+            
+            // Ενημέρωση του target display
+            const targetSpan = container.querySelector('.target-display');
+            if (targetSpan) {
+                 targetSpan.querySelector('span').textContent = ` (${acceptedCount}/${target} Προσληφθέντες)`;
+            }
+
+            // Επιστρέφουμε την κατάσταση κλειδώματος
+            return isLocked;
+        }
+
+        // 10. Δημιουργία Γραμμής Υποψηφίου
+        function createCandidateRow(profileKey, candidate, index, isLocked) {
+            const row = document.createElement('li');
+            row.className = 'candidate-row';
+
+            // 10.1 Όνομα Υποψηφίου (Editable)
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'candidate-name';
+            nameSpan.textContent = candidate.name;
+            nameSpan.contentEditable = true;
+            nameSpan.title = 'Κάντε κλικ για επεξεργασία του ονόματος';
+            nameSpan.addEventListener('blur', (e) => handleNameChange(profileKey, index, e.target.textContent, e.target));
+            row.appendChild(nameSpan);
+
+            // 10.2 Επιλογή Status
+            const statusSelect = document.createElement('select');
+            statusSelect.className = `status-select status-${candidate.status}`;
+
+            Object.keys(statusOptionsMap).forEach(key => {
+                const option = document.createElement('option');
+                option.value = key;
+                option.textContent = statusOptionsMap[key];
+                statusSelect.appendChild(option);
+            });
+            statusSelect.value = candidate.status;
+            
+            // Κλείδωμα Select (δεν επιτρέπει αλλαγές αν έχει κλειδώσει το προφίλ, εκτός αν είναι ήδη 'Accepted')
+            statusSelect.disabled = isLocked && candidate.status !== 'Accepted';
+
+            statusSelect.onchange = (e) => {
+                const newStatus = e.target.value;
+                e.target.className = `status-select status-${newStatus}`;
+                handleStatusChange(profileKey, index, newStatus);
+            };
+            row.appendChild(statusSelect);
+
+            // 10.3 Πεδίο Σημειώσεων
+            const commentInput = document.createElement('textarea');
+            commentInput.className = 'comment-input';
+            commentInput.placeholder = 'Προσθέστε σχόλια εδώ...';
+            commentInput.value = candidate.comment;
+            
+            commentInput.onblur = (e) => {
+                handleCommentChange(profileKey, index, e.target.value);
+            };
+            row.appendChild(commentInput);
+
+            return row;
+        }
+
+        // 11. Δημιουργία Προφίλ Container
+        function createProfileContainer(profileKey, profile) {
+            const container = document.createElement('div');
+            container.className = `profile-container ${profile.isExpanded ? '' : 'closed'}`;
+
+            // Header (Τίτλος, Target, Toggle)
+            const header = document.createElement('div');
+            header.className = 'profile-header';
+            header.onclick = () => toggleExpand(profileKey);
+
+            const title = document.createElement('h2');
+            title.className = 'profile-title';
+            title.textContent = profile.title;
+            header.appendChild(title);
+
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'profile-info';
+
+            // Target Count Display & Input
+            const acceptedCount = profile.candidates.filter(c => c.status === 'Accepted').length;
+            const target = parseInt(profile.targetCount, 10);
+            const isLocked = acceptedCount >= target && target > 0;
+
+            const targetSpan = document.createElement('span');
+            targetSpan.className = `target-display ${isLocked ? 'locked' : ''}`;
+            targetSpan.innerHTML = `Προβλ. Αριθμός: <input type="number" min="0" value="${target}" class="target-input" id="target-${profileKey}" /> <span style="font-weight:normal;">(${acceptedCount}/${target} Προσληφθέντες)</span>`;
+            
+            const targetInput = targetSpan.querySelector(`#target-${profileKey}`);
+            targetInput.onclick = (e) => e.stopPropagation(); // Αποφυγή collapse/expand
+            targetInput.onchange = (e) => handleTargetChange(profileKey, e.target.value);
+            
+            infoDiv.appendChild(targetSpan);
+            
+            // Toggle Icon
+            const toggleIcon = document.createElement('span');
+            toggleIcon.className = 'toggle-icon';
+            toggleIcon.textContent = profile.isExpanded ? '▼' : '►';
+            infoDiv.appendChild(toggleIcon);
+
+            header.appendChild(infoDiv);
+            container.appendChild(header);
+
+            // List & Add Button
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'profile-content';
+            contentDiv.style.display = profile.isExpanded ? 'block' : 'none';
+            
+            const listDiv = document.createElement('ul');
+            listDiv.className = 'candidate-list';
+            
+            profile.candidates.forEach((candidate, index) => {
+                listDiv.appendChild(createCandidateRow(profileKey, candidate, index, isLocked));
+            });
+            
+            const addButton = document.createElement('button');
+            addButton.className = 'add-button';
+            addButton.textContent = `+ Προσθήκη Υποψηφίου`;
+            addButton.onclick = (e) => { e.stopPropagation(); addCandidate(profileKey); };
+            addButton.disabled = isLocked;
+            
+            contentDiv.appendChild(listDiv);
+            contentDiv.appendChild(addButton);
+
+            container.appendChild(contentDiv);
+            return container;
+        }
+
+        // 12. Render ολόκληρης της εφαρμογής
+        function renderApp() {
+            const container = document.getElementById('profiles-container');
+            container.innerHTML = '';
+            
+            // Εξασφαλίζουμε ότι τα κλειδιά είναι σωστά ταξινομημένα
+            const profileKeys = Object.keys(profilesData).sort(); 
+
+            profileKeys.forEach(profileKey => {
+                container.appendChild(createProfileContainer(profileKey, profilesData[profileKey]));
+            });
+        }
+
+        // 13. Χειρισμός Αλλαγής Status
+        function handleStatusChange(profileKey, candidateIndex, newStatus) {
+            profilesData[profileKey].candidates[candidateIndex].status = newStatus;
+            saveData();
+        }
+        
+        // 14. Χειρισμός Αλλαγής Target
+        function handleTargetChange(profileKey, newTarget) {
+            const targetValue = parseInt(newTarget, 10);
+            if (!isNaN(targetValue) && targetValue >= 0) {
+                profilesData[profileKey].targetCount = targetValue;
+                saveData();
+            }
+        }
+
+        // 15. Χειρισμός Toggle Expand/Collapse
+        function toggleExpand(profileKey) {
+            profilesData[profileKey].isExpanded = !profilesData[profileKey].isExpanded;
+            saveData();
+        }
+
+        // 16. Χειρισμός Αλλαγής Ονόματος
+        function handleNameChange(profileKey, candidateIndex, newName, element) {
+            const trimmedName = newName.trim();
+            const originalName = profilesData[profileKey].candidates[candidateIndex].name;
+
+            if (trimmedName && trimmedName !== originalName) {
+                profilesData[profileKey].candidates[candidateIndex].name = trimmedName;
+                saveData(); 
+            } else if (!trimmedName) {
+                // Αν αδειάσει το πεδίο, επαναφέρουμε το αρχικό όνομα
+                element.textContent = originalName;
+            }
+        }
+
+        // 17. Χειρισμός Προσθήκης Υποψηφίου
+        async function addCandidate(profileKey) {
+            const profile = profilesData[profileKey];
+            const acceptedCount = profile.candidates.filter(c => c.status === 'Accepted').length;
+            const target = parseInt(profile.targetCount, 10);
+            
+            if (acceptedCount >= target && target > 0) {
+                 await showCustomModal('alert', 'Όριο Προσλήψεων', 'Η κατηγορία είναι κλειδωμένη! Αυξήστε τον προβλεπόμενο αριθμό για να προσθέσετε νέους υποψηφίους.');
+                 return;
+            }
+
+            const candidateName = await showCustomModal('prompt', 'Προσθήκη Υποψηφίου', 'Εισάγετε το όνομα του νέου υποψηφίου:', '');
+            
+            if (candidateName) {
+                const newCandidate = {
+                    name: candidateName.trim() || 'Νέος Υποψήφιος',
+                    comment: '',
+                    status: 'NoStatus'
+                };
+                
+                profilesData[profileKey].candidates.push(newCandidate);
+                saveData(); 
+            }
+        }
+        
+        // 18. Χειρισμός Αλλαγής Σημειώσεων
+        function handleCommentChange(profileKey, candidateIndex, newComment) {
+            profilesData[profileKey].candidates[candidateIndex].comment = newComment;
+            saveData();
+        }
+    </script>
+</body>
+</html>
