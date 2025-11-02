@@ -36,7 +36,7 @@
             <p id="auth-status" class="text-sm text-gray-500 mt-1">Αρχικοποίηση...</p>
         </header>
 
-        <div id="profiles-list">
+        <div id="profiles-list" class="hidden">
             <!-- Content will be rendered here -->
         </div>
 
@@ -68,8 +68,6 @@
         let isDataLoaded = false;
         
         // --- MANDATORY FIREBASE GLOBALS ---
-        // These are typically provided by the canvas environment, but for standalone GitHub usage,
-        // we use a simplified version for Realtime Database based on user's keys.
         const appId = 'github-standalone-app';
         const initialAuthToken = undefined;
 
@@ -89,15 +87,13 @@
         // 1. Firebase Imports (Modern Module Syntax)
         // ----------------------------------------------------
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        // REMOVED setLogLevel from import
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
         
         // Use Realtime Database Pathing
-        // Using a fixed path for GitHub Pages as appId is a placeholder
         const publicPath = `/recruitment-profiles`;
         
-        // Default Data Structure
+        // Default Data Structure (Includes 7 Profiles)
         const defaultProfilesData = {
             'frontend': { title: 'Frontend Developer', targetCount: '1', candidates: [
                 { name: 'Αραμπαντζής', comment: 'Καλό προφίλ, ενδιαφέρον σε React.', status: 'Accepted' },
@@ -111,12 +107,17 @@
                 { name: 'Χρυσοδούλου', comment: 'Πολύ έμπειρος σε διαχείριση ομάδας.', status: 'Accepted' },
                 { name: 'Δήμου', comment: 'Ισχυρό τεχνικό υπόβαθρο.', status: 'Rejected' }
             ]},
+            'architect': { title: 'System Architect', targetCount: '1', candidates: [
+                { name: 'Μπαμπλάδιμος', comment: 'Πολύ καλή συνολική εικόνα συστημάτων.', status: 'NoStatus' }
+            ]},
             'devops': { title: 'DevOps Engineer', targetCount: '1', candidates: [
                 { name: 'Τριανταφυλλόπουλος', comment: 'Ισχυρή εμπειρία σε Kubernetes.', status: 'NoStatus' }
             ]},
-            'architect': { title: 'System Architect', targetCount: '1', candidates: [
-                { name: 'Μπαμπλάδιμος', comment: 'Πολύ καλή συνολική εικόνα συστημάτων.', status: 'NoStatus' }
-            ]}
+            'other': { title: 'Other Profiles', targetCount: '1', candidates: [
+                { name: 'Πρόγιας', comment: 'Διαθέσιμος για άλλα projects.', status: 'NoStatus' },
+                { name: 'Βενιανάκης', comment: '', status: 'NoStatus' }
+            ]},
+            'aiengineers': { title: 'AI Engineers', targetCount: '2', candidates: [], status: 'NoStatus' } // 7ο Προφίλ
         };
 
         let profilesData = {};
@@ -200,8 +201,6 @@
                 db = getDatabase(app); 
                 auth = getAuth(app);
                 
-                // setLogLevel('debug'); // Removed setLogLevel call
-                
                 // Sign in anonymously and set up listener
                 onAuthStateChanged(auth, async (user) => {
                     if (user) {
@@ -235,6 +234,7 @@
         async function initializeWithDefaultData() {
             console.log("Initializing with default data...");
              try {
+                // Ensure all 7 profiles are written on initialization
                 await set(ref(db, publicPath), defaultProfilesData);
                 console.log("Default data written successfully.");
             } catch (error) {
@@ -250,20 +250,26 @@
             const dbRef = ref(db, publicPath);
             
             onValue(dbRef, (snapshot) => {
-                loadingMessage.classList.add('hidden'); // Hide loading message once snapshot fires
-                isDataLoaded = true;
-                profilesList.classList.remove('hidden');
-
+                // This fires BOTH when loading (first time) AND when data changes (second time)
+                
                 if (snapshot.exists()) {
                     profilesData = snapshot.val();
                     console.log("Data loaded successfully from RTDB.");
+                    
+                    // On successful load (second time, data exists): Hide loader and show list
+                    loadingMessage.classList.add('hidden'); 
+                    isDataLoaded = true;
+                    profilesList.classList.remove('hidden');
+                    
+                    renderApp(); // RENDER THE DATA
+
                 } else {
                     console.log("No data found, initializing...");
+                    // On initial load (first time, data doesn't exist): Write defaults
                     initializeWithDefaultData(); 
-                    return;
+                    // No return here, the write operation above will trigger the listener again!
                 }
                 
-                renderApp();
             }, (error) => {
                 console.error("RTDB Listener Error:", error);
                 showMessageBox('Σφάλμα Δεδομένων', `Αδυναμία φόρτωσης δεδομένων: ${error.message}. Ελέγξτε τους κανόνες (rules).`);
@@ -330,14 +336,15 @@
             row.className = `candidate-row grid grid-cols-12 gap-3 items-center p-3 border-l-4 rounded-lg hover:bg-gray-50 transition ${isLocked && candidate.status === 'Accepted' ? 'border-green-600' : 'border-gray-300'}`;
             
             // Name (Col 1-4)
-            row.innerHTML += `<div class="col-span-12 sm:col-span-4 font-medium text-gray-800 truncate" contenteditable="true" onblur="handleNameChange('${profileKey}', ${index}, this.textContent, this)">${candidate.name}</div>`;
+            // Added global handler prefix to onblur event
+            row.innerHTML += `<div class="col-span-12 sm:col-span-4 font-medium text-gray-800 truncate" contenteditable="true" onblur="window.handleNameChange('${profileKey}', ${index}, this.textContent, this)">${candidate.name}</div>`;
             
             // Status (Col 5-7)
             row.innerHTML += `
                 <div class="col-span-6 sm:col-span-3">
                     <select data-profile-key="${profileKey}" data-candidate-index="${index}"
                         class="status-select w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
-                        onchange="handleStatusChange(this)" ${isLocked && candidate.status !== 'Accepted' ? 'disabled' : ''}>
+                        onchange="window.handleStatusChange(this)" ${isLocked && candidate.status !== 'Accepted' ? 'disabled' : ''}>
                         <option value="NoStatus" ${candidate.status === 'NoStatus' ? 'selected' : ''}>Αναμονή</option>
                         <option value="Interviewing" ${candidate.status === 'Interviewing' ? 'selected' : ''}>Σε Συνέντευξη</option>
                         <option value="Accepted" ${candidate.status === 'Accepted' ? 'selected' : ''}>Προσλήφθηκε</option>
@@ -351,13 +358,13 @@
                     <input type="text" value="${candidate.comment}" data-profile-key="${profileKey}" data-candidate-index="${index}"
                         class="candidate-input w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm transition"
                         placeholder="Σημειώσεις"
-                        onchange="handleCommentChange(this.dataset.profileKey, this.dataset.candidateIndex, this.value)">
+                        onchange="window.handleCommentChange(this.dataset.profileKey, this.dataset.candidateIndex, this.value)">
                 </div>`;
             
             // Delete Button (Col 11-12)
             row.innerHTML += `
                 <div class="col-span-12 sm:col-span-2 flex justify-end">
-                    <button onclick="handleDeleteCandidate('${profileKey}', ${index})"
+                    <button onclick="window.handleDeleteCandidate('${profileKey}', ${index})"
                         class="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition text-xs font-semibold">
                         Διαγραφή
                     </button>
@@ -389,7 +396,7 @@
                             Στόχος:
                             <input type="number" value="${target}" min="0" data-profile-key="${profileKey}"
                                 class="target-input w-16 ml-2 p-1 border ${lockClass} rounded-lg text-center font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 transition" 
-                                onchange="handleTargetChange(this)">
+                                onchange="window.handleTargetChange(this)">
                         </label>
                         <div class="text-sm font-medium text-gray-700 w-32">
                             <span class="font-bold text-lg text-blue-600">${acceptedCount}</span> / ${target} Προσλήψεις
@@ -401,7 +408,7 @@
                 </div>
                 <div class="flex justify-between items-center mb-4 p-2 ${lockClass} rounded-lg">
                     <p class="text-sm font-semibold text-gray-700">Λίστα Υποψηφίων:</p>
-                    <button onclick="handleAddCandidate('${profileKey}')"
+                    <button onclick="window.handleAddCandidate('${profileKey}')"
                         class="px-4 py-2 text-sm font-semibold rounded-lg shadow-md transition
                         ${isLocked ? 'bg-gray-400 text-gray-700 cursor-not-allowed' : 'bg-green-500 text-white hover:bg-green-600'}"
                         ${isLocked ? 'disabled' : ''}>
@@ -495,6 +502,11 @@
         window.handleDeleteCandidate = function(profileKey, candidateIndex) {
             profilesData[profileKey].candidates.splice(candidateIndex, 1);
             saveData();
+        }
+
+        // 19. Execution
+        window.onload = function() {
+            initFirebase();
         }
         
     </script>
