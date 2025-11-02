@@ -235,12 +235,25 @@
             background-color: #f3f4f6;
             color: #4b5563;
         }
+        /* ΝΕΟ ΣΤΥΛ: Μήνυμα Κατάστασης */
+        #status-message {
+            text-align: center;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #1d4ed8;
+        }
     </style>
 </head>
 <body>
     <div class="app-container">
         <h1>Παρακολούθηση Προσλήψεων Real-Time</h1>
-        <div id="profiles-container">
+        
+        <!-- ΝΕΟ ΣΤΟΙΧΕΙΟ: Μήνυμα Κατάστασης -->
+        <div id="status-message">Φόρτωση δεδομένων από το Firebase...</div>
+        
+        <div id="profiles-container" style="display: none;">
             <!-- Εδώ θα μπουν τα προφίλ -->
         </div>
         <div class="footer">
@@ -274,11 +287,21 @@
             measurementId: "G-5EHRR21L4W"
         };
         
-        // 3. Αρχικοποίηση Firebase και Database
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
-        const ref = db.ref('recruitment-profiles'); // Κεντρικός κόμβος
+        let db, ref;
         
+        // 3. ΑΡΧΙΚΟΠΟΙΗΣΗ FIREBASE (με Error Handling)
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            ref = db.ref('recruitment-profiles'); // Κεντρικός κόμβος
+            document.getElementById('status-message').textContent = 'Σύνδεση επιτυχής. Αναμονή δεδομένων...';
+            startDataListeners(); // Καλούμε τον Listener μόνο αν η αρχικοποίηση είναι επιτυχής
+        } catch (error) {
+            console.error("Firebase Initialization Failed:", error);
+            document.getElementById('status-message').style.color = '#dc2626'; // Red
+            document.getElementById('status-message').textContent = "ΣΦΑΛΜΑ: Αδυναμία σύνδεσης Firebase. Ελέγξτε τα κλειδιά σας.";
+        }
+
         // 4. ΠΛΗΡΗ ΑΡΧΙΚΑ ΔΕΔΟΜΕΝΑ (Αν η βάση είναι κενή, αυτά θα φορτωθούν)
         let profilesData = {
             "Frontend": {
@@ -405,23 +428,31 @@
         }
 
         // 7. Λήψη Δεδομένων από Firebase (onSnapshot)
-        ref.on('value', (snapshot) => {
-            const data = snapshot.val();
-            if (data && data['recruitment-profiles']) {
-                 // Έλεγχος για τη δομή που περιμέναμε
-                profilesData = data['recruitment-profiles'];
-            } else if (data) {
-                // Αν τα δεδομένα δεν είναι κάτω από 'recruitment-profiles' (συνήθως μετά την πρώτη φόρτωση)
-                profilesData = data;
-            } else {
-                // Αν η βάση είναι κενή, ανεβάζουμε τα αρχικά δεδομένα
-                ref.set(profilesData); // Θα πυροδοτήσει ξανά το 'value' listener
-            }
-            renderApp();
-        }, (error) => {
-            console.error("Firebase Read Failed: " + error.code);
-            showCustomModal('alert', 'Σφάλμα Σύνδεσης', 'Αποτυχία ανάγνωσης δεδομένων από το Firebase. Ελέγξτε τις ρυθμίσεις σας ή τη σύνδεση.');
-        });
+        function startDataListeners() {
+            ref.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data && data['recruitment-profiles']) {
+                    profilesData = data['recruitment-profiles'];
+                } else if (data) {
+                    profilesData = data;
+                } else {
+                    // Αν η βάση είναι κενή, ανεβάζουμε τα αρχικά δεδομένα
+                    ref.set(profilesData); // Θα πυροδοτήσει ξανά το 'value' listener
+                    return; // Αποφυγή rendering μέχρι να επιστρέψει η πλήρης δομή
+                }
+                
+                // Κρύψιμο μηνύματος φόρτωσης και εμφάνιση profiles
+                document.getElementById('status-message').style.display = 'none';
+                document.getElementById('profiles-container').style.display = 'block';
+
+                renderApp();
+            }, (error) => {
+                console.error("Firebase Read Failed: " + error.code);
+                document.getElementById('status-message').style.color = '#dc2626'; // Red
+                document.getElementById('status-message').textContent = 'ΣΦΑΛΜΑ: Αποτυχία ανάγνωσης δεδομένων από το Firebase. Ελέγξτε τους κανόνες (rules) της βάσης σας.';
+            });
+        }
+
 
         // 8. Αποθήκευση Δεδομένων στο Firebase
         function saveData() {
