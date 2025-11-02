@@ -1,30 +1,30 @@
 <!DOCTYPE html>
 <html lang="el">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Παρακολούθηση Προφίλ Υποψηφίων (με Όριο Προσλήψεων)</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Παρακολούθηση Προφίλ Υποψηφίων</title>
 
-    <!-- Firebase (compat) -->
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+  <!-- Firebase SDK (Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-        .candidate-input { transition: all 0.2s ease-in-out; }
-        .status-select { color:#1f2937; background:#fff; border:1px solid #d1d5db; }
-    </style>
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f9fafb; }
+    .candidate-input { transition: all 0.2s ease-in-out; }
+    .status-select { color: #1f2937; background: #fff; border: 1px solid #d1d5db; }
+  </style>
 </head>
-<body class="bg-gray-50 min-h-screen p-4 md:p-8">
-<div id="app-container" class="max-w-6xl mx-auto">
-    <header class="mb-4 border-b pb-4 border-blue-200">
-        <h1 class="text-3xl md:text-4xl font-extrabold text-blue-700">
-            Παρακολούθηση Προφίλ Υποψηφίων
-        </h1>
-        <p id="auth-status" class="text-sm text-gray-500 mt-1">Αρχικοποίηση...</p>
+<body class="p-6">
+  <div class="max-w-6xl mx-auto">
+    <header class="mb-6 border-b pb-4 border-blue-200">
+      <h1 class="text-3xl font-extrabold text-blue-700">
+        Παρακολούθηση Προφίλ Υποψηφίων
+      </h1>
+      <p id="auth-status" class="text-sm text-gray-500 mt-1">Αρχικοποίηση...</p>
     </header>
 
     <div id="banner" class="hidden mb-4 p-3 rounded-lg text-sm"></div>
@@ -32,290 +32,211 @@
     <div id="profiles-list" class="hidden"></div>
 
     <div id="loading-message" class="text-center py-12 text-lg text-gray-600 font-semibold">
-        Σύνδεση επιτυχής. Αναμονή δεδομένων...
+      Σύνδεση επιτυχής. Αναμονή δεδομένων...
     </div>
+  </div>
 
-    <!-- Modal -->
-    <div id="modal-container" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-50 flex items-center justify-center hidden">
-        <div class="bg-white rounded-xl shadow-2xl p-6 w-11/12 max-w-md">
-            <h3 id="modal-title" class="text-xl font-bold mb-4 text-blue-600"></h3>
-            <p id="modal-message" class="text-gray-700 mb-6"></p>
-            <input type="text" id="modal-input" class="candidate-input w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 hidden" placeholder="Εισάγετε το όνομα του νέου υποψηφίου">
-            <div class="flex justify-end space-x-3 mt-4">
-                <button id="modal-cancel-btn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition hidden">Άκυρο</button>
-                <button id="modal-ok-btn" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow hover:bg-blue-700 transition">OK</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-    // Firebase globals
+  <script>
     let app, db, auth;
     let userId = 'default-user';
     let isDataLoaded = false;
-    let readOnlyMode = false; // γίνεται true αν δεν έχουμε άδεια write/read
+    let readOnlyMode = false;
 
-    // Firebase config
+    // --- FIREBASE CONFIG (Team tracker project) ---
     const firebaseConfig = {
-        apiKey: "AIzaSyAXFlEK9ehNqUSbHE2DFGt4tE0uVll7WQs",
-        authDomain: "team-tracker-c123a.firebaseapp.com",
-        databaseURL: "https://team-tracker-c123a-default-rtdb.europe-west1.firebasedatabase.app",
-        projectId: "team-tracker-c123a",
-        storageBucket: "team-tracker-c123a.appspot.com",
-        messagingSenderId: "201123283369",
-        appId: "1:201123283369:web:ae0c28d6d8a637aa0404b8",
-        measurementId: "G-5EHRR21L4W"
+      apiKey: "AIzaSyAXFlEK9ehNqUSbHE2DFGt4tE0uVll7WQs",
+      authDomain: "team-tracker-c123a.firebaseapp.com",
+      databaseURL: "https://team-tracker-c123a-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "team-tracker-c123a",
+      storageBucket: "team-tracker-c123a.appspot.com",
+      messagingSenderId: "201123283369",
+      appId: "1:201123283369:web:ae0c28d6d8a637aa0404b8"
     };
-
-    const publicPath = `/recruitment-profiles`;
+    const publicPath = '/recruitment-profiles';
 
     const defaultProfilesData = {
-        'frontend': { title: 'Frontend Developer', targetCount: '1', candidates: [
-            { name: 'Αραμπαντζής', comment: 'Καλό προφίλ, ενδιαφέρον σε React.', status: 'Accepted' },
-            { name: 'Κυρώσης', comment: 'Αδύναμο portfolio. Χρειάζεται βελτίωση.', status: 'Rejected' }
-        ]},
-        'backend': { title: 'Backend Developer', targetCount: '2', candidates: [
-            { name: 'Γερουτσκής', comment: 'Εμπειρία σε Java/Spring.', status: 'NoStatus' },
-            { name: 'Τάτσης', comment: 'Python/Django, εξαιρετικές συστάσεις.', status: 'Interviewing' }
-        ]},
-        'teamlead': { title: 'SW Team Lead', targetCount: '1', candidates: [
-            { name: 'Χρυσοδούλου', comment: 'Πολύ έμπειρος σε διαχείριση ομάδας.', status: 'Accepted' },
-            { name: 'Δήμου', comment: 'Ισχυρό τεχνικό υπόβαθρο.', status: 'Rejected' }
-        ]},
-        'architect': { title: 'System Architect', targetCount: '1', candidates: [
-            { name: 'Μπαμπλάδιμος', comment: 'Πολύ καλή συνολική εικόνα συστημάτων.', status: 'NoStatus' }
-        ]},
-        'devops': { title: 'DevOps Engineer', targetCount: '1', candidates: [
-            { name: 'Τριανταφυλλόπουλος', comment: 'Ισχυρή εμπειρία σε Kubernetes.', status: 'NoStatus' }
-        ]},
-        'other': { title: 'Other Profiles', targetCount: '1', candidates: [
-            { name: 'Πρόγιας', comment: 'Διαθέσιμος για άλλα projects.', status: 'NoStatus' },
-            { name: 'Βενιανάκης', comment: '', status: 'NoStatus' }
-        ]},
-        'aiengineers': { title: 'AI Engineers', targetCount: '2', candidates: [] }
+      frontend: { title: 'Frontend Developer', targetCount: '1', candidates: [
+        { name: 'Αραμπαντζής', comment: 'Καλό προφίλ, ενδιαφέρον σε React.', status: 'Accepted' },
+        { name: 'Κυρώσης', comment: 'Αδύναμο portfolio. Χρειάζεται βελτίωση.', status: 'Rejected' }
+      ]},
+      backend: { title: 'Backend Developer', targetCount: '2', candidates: [
+        { name: 'Γερουτσκής', comment: 'Εμπειρία σε Java/Spring.', status: 'NoStatus' },
+        { name: 'Τάτσης', comment: 'Python/Django, εξαιρετικές συστάσεις.', status: 'Interviewing' }
+      ]},
+      teamlead: { title: 'SW Team Lead', targetCount: '1', candidates: [
+        { name: 'Χρυσοδούλου', comment: 'Πολύ έμπειρος σε διαχείριση ομάδας.', status: 'Accepted' },
+        { name: 'Δήμου', comment: 'Ισχυρό τεχνικό υπόβαθρο.', status: 'Rejected' }
+      ]},
+      architect: { title: 'System Architect', targetCount: '1', candidates: [
+        { name: 'Μπαμπλάδιμος', comment: 'Πολύ καλή συνολική εικόνα συστημάτων.', status: 'NoStatus' }
+      ]},
+      devops: { title: 'DevOps Engineer', targetCount: '1', candidates: [
+        { name: 'Τριανταφυλλόπουλος', comment: 'Ισχυρή εμπειρία σε Kubernetes.', status: 'NoStatus' }
+      ]},
+      other: { title: 'Other Profiles', targetCount: '1', candidates: [
+        { name: 'Πρόγιας', comment: 'Διαθέσιμος για άλλα projects.', status: 'NoStatus' },
+        { name: 'Βενιανάκης', comment: '', status: 'NoStatus' }
+      ]},
+      aiengineers: { title: 'AI Engineers', targetCount: '2', candidates: [] }
     };
 
-    let profilesData = {};
-
-    const loadingMessage = document.getElementById('loading-message');
-    const profilesList   = document.getElementById('profiles-list');
-    const authStatusElement = document.getElementById('auth-status');
+    const authStatus = document.getElementById('auth-status');
     const banner = document.getElementById('banner');
+    const profilesList = document.getElementById('profiles-list');
+    const loadingMsg = document.getElementById('loading-message');
 
-    // Modal
-    const modalContainer = document.getElementById('modal-container');
-    const modalTitle     = document.getElementById('modal-title');
-    const modalMessage   = document.getElementById('modal-message');
-    const modalInput     = document.getElementById('modal-input');
-    const modalOkBtn     = document.getElementById('modal-ok-btn');
-    const modalCancelBtn = document.getElementById('modal-cancel-btn');
-
-    function showMessageBox(title, message) {
-        modalTitle.textContent = title;
-        modalMessage.textContent = message;
-        modalInput.classList.add('hidden');
-        modalCancelBtn.classList.add('hidden');
-        modalContainer.classList.remove('hidden');
-        return new Promise(resolve => {
-            modalOkBtn.onclick = () => { modalContainer.classList.add('hidden'); resolve(true); };
-        });
-    }
-
-    function promptForCandidateName(title, message) {
-        modalTitle.textContent = title;
-        modalMessage.textContent = message;
-        modalInput.value = '';
-        modalInput.classList.remove('hidden');
-        modalCancelBtn.classList.remove('hidden');
-        modalContainer.classList.remove('hidden');
-        modalInput.focus();
-        return new Promise(resolve => {
-            const ok = () => { modalContainer.classList.add('hidden'); resolve(modalInput.value); cleanup(); };
-            const cancel = () => { modalContainer.classList.add('hidden'); resolve(null); cleanup(); };
-            const cleanup = () => { modalOkBtn.onclick = null; modalCancelBtn.onclick = null; };
-            modalOkBtn.onclick = ok; modalCancelBtn.onclick = cancel;
-        });
-    }
-
-    async function initFirebase() {
-        try {
-            if (!window.firebase) {
-                authStatusElement.textContent = 'ΣΦΑΛΜΑ: Το Firebase SDK δεν φορτώθηκε.';
-                return;
-            }
-            app = firebase.initializeApp(firebaseConfig);
-            db  = app.database();
-            auth = app.auth();
-
-            auth.onAuthStateChanged(async (user) => {
-                if (user) {
-                    userId = user.uid;
-                    authStatusElement.textContent = `Σύνδεση: ${userId.substring(0, 8)}... (Δημόσια Δεδομένα)`;
-                    loadData();
-                } else {
-                    try {
-                        await auth.signInAnonymously();
-                    } catch (e) {
-                        console.error("Anonymous Sign-in Failed:", e);
-                        authStatusElement.textContent = 'ΣΦΑΛΜΑ: Αποτυχία ανώνυμης σύνδεσης.';
-                    }
-                }
-            });
-        } catch (error) {
-            console.error("Firebase Initialization Error:", error);
-            authStatusElement.textContent = `ΣΦΑΛΜΑ Firebase: ${error.code || error.message}`;
-        }
-    }
-
-    async function initializeWithDefaultData() {
-        try {
-            await db.ref(publicPath).set(defaultProfilesData);
-            return true;
-        } catch (error) {
-            console.error("Default data write failed:", error);
-            return false;
-        }
-    }
-
+    // Banner helper
     function setBanner(text, cls) {
-        banner.textContent = text;
-        banner.className = `mb-4 p-3 rounded-lg text-sm ${cls}`;
-        banner.classList.remove('hidden');
+      banner.textContent = text;
+      banner.className = `mb-4 p-3 rounded-lg text-sm ${cls}`;
+      banner.classList.remove('hidden');
+    }
+
+    // Firebase init
+    async function initFirebase() {
+      try {
+        app = firebase.initializeApp(firebaseConfig);
+        db = app.database();
+        auth = app.auth();
+
+        auth.onAuthStateChanged(async (user) => {
+          if (user) {
+            userId = user.uid;
+            authStatus.textContent = `Σύνδεση: ${userId.substring(0, 8)}...`;
+            loadData();
+          } else {
+            try {
+              await auth.signInAnonymously();
+            } catch (e) {
+              console.error("Anonymous Sign-in Failed:", e);
+              authStatus.textContent = `ΣΦΑΛΜΑ: ${e.code || e.message}`;
+              readOnlyMode = true;
+              profilesData = JSON.parse(JSON.stringify(defaultProfilesData));
+              isDataLoaded = true;
+              loadingMsg.classList.add('hidden');
+              profilesList.classList.remove('hidden');
+              setBanner(
+                `Λειτουργία προβολής μόνο. Ενεργοποίησε Anonymous Sign-in & Authorized domains.`,
+                'bg-yellow-100 text-yellow-800 border border-yellow-300'
+              );
+              renderApp();
+            }
+          }
+        });
+      } catch (err) {
+        console.error("Firebase Init Error:", err);
+        authStatus.textContent = `ΣΦΑΛΜΑ Firebase: ${err.message}`;
+      }
     }
 
     function loadData() {
-        const dbRef = db.ref(publicPath);
-
-        dbRef.on('value', async (snapshot) => {
-            if (snapshot.exists()) {
-                profilesData = snapshot.val();
-                readOnlyMode = false;
-                banner.classList.add('hidden');
-                loadingMessage.classList.add('hidden');
-                profilesList.classList.remove('hidden');
-                isDataLoaded = true;
-                renderApp();
-            } else {
-                // Προσπάθεια αρχικοποίησης
-                const ok = await initializeWithDefaultData();
-                if (!ok) {
-                    // Fallback σε local read-only προβολή
-                    readOnlyMode = true;
-                    profilesData = JSON.parse(JSON.stringify(defaultProfilesData));
-                    setBanner('Λειτουργία προβολής μόνο (no DB access). Ελέγξτε Anonymous sign-in και κανόνες RTDB για το /recruitment-profiles.', 'bg-yellow-100 text-yellow-800 border border-yellow-300');
-                    loadingMessage.classList.add('hidden');
-                    profilesList.classList.remove('hidden');
-                    isDataLoaded = true;
-                    renderApp();
-                }
-            }
-        }, (error) => {
-            console.error("RTDB Listener Error:", error);
-            readOnlyMode = true;
-            profilesData = JSON.parse(JSON.stringify(defaultProfilesData));
-            setBanner(`Σφάλμα ανάγνωσης DB: ${error.message}. Προβολή τοπικών δεδομένων.`, 'bg-red-100 text-red-800 border border-red-300');
-            loadingMessage.classList.add('hidden');
-            profilesList.classList.remove('hidden');
-            isDataLoaded = true;
-            renderApp();
-        });
+      const dbRef = db.ref(publicPath);
+      dbRef.on('value', async (snapshot) => {
+        if (snapshot.exists()) {
+          profilesData = snapshot.val();
+          isDataLoaded = true;
+          loadingMsg.classList.add('hidden');
+          profilesList.classList.remove('hidden');
+          renderApp();
+        } else {
+          await db.ref(publicPath).set(defaultProfilesData);
+        }
+      }, (error) => {
+        console.error("RTDB error:", error);
+        readOnlyMode = true;
+        profilesData = JSON.parse(JSON.stringify(defaultProfilesData));
+        isDataLoaded = true;
+        loadingMsg.classList.add('hidden');
+        profilesList.classList.remove('hidden');
+        setBanner(`Αποτυχία σύνδεσης DB: ${error.message}`, 'bg-red-100 text-red-800 border border-red-300');
+        renderApp();
+      });
     }
 
     function saveData() {
-        if (readOnlyMode) {
-            setBanner('Αποθήκευση απενεργοποιημένη (read-only). Ρύθμισε κανόνες/Anonymous sign-in και κάνε refresh.', 'bg-yellow-100 text-yellow-800 border border-yellow-300');
-            return;
-        }
-        if (!db || !isDataLoaded) return;
-        db.ref(publicPath).set(profilesData).catch(error => {
-            console.error("Save error:", error);
-            setBanner(`Αποτυχία αποθήκευσης: ${error.message}`, 'bg-red-100 text-red-800 border border-red-300');
-        });
+      if (readOnlyMode) return;
+      db.ref(publicPath).set(profilesData)
+        .then(() => console.log("Data saved"))
+        .catch(e => console.error("Save error:", e));
     }
 
     function renderApp() {
-        profilesList.innerHTML = '';
-        Object.keys(profilesData).forEach(k => {
-            profilesList.appendChild(createProfileContainer(k, profilesData[k]));
-        });
+      profilesList.innerHTML = '';
+      Object.keys(profilesData).forEach(key => {
+        profilesList.appendChild(createProfileCard(key, profilesData[key]));
+      });
     }
 
-    function createCandidateRow(profileKey, candidate, index, isLocked) {
-        const row = document.createElement('div');
-        row.className = `grid grid-cols-12 gap-3 items-center p-3 border-l-4 rounded-lg hover:bg-gray-50 transition ${isLocked && candidate.status === 'Accepted' ? 'border-green-600' : 'border-gray-300'}`;
+    function createProfileCard(key, profile) {
+      const div = document.createElement('div');
+      const candidates = profile.candidates || [];
+      const accepted = candidates.filter(c => c.status === 'Accepted').length;
+      const target = parseInt(profile.targetCount, 10) || 0;
+      const isLocked = accepted >= target && target > 0;
+      const lockColor = isLocked ? 'bg-red-50 border-red-300' : 'bg-green-50 border-green-300';
 
-        row.innerHTML += `<div class="col-span-12 sm:col-span-4 font-medium text-gray-800 truncate" contenteditable="${!readOnlyMode}" onblur="handleNameChange('${profileKey}', ${index}, this.textContent, this)">${candidate.name}</div>`;
+      div.className = 'bg-white border border-gray-200 rounded-xl shadow p-4 mb-6';
+      div.innerHTML = `
+        <div class="flex justify-between items-center border-b pb-2 mb-3">
+          <h2 class="text-xl font-bold text-gray-800">${profile.title}</h2>
+          <div class="text-sm text-gray-700">
+            <span class="font-semibold text-blue-600">${accepted}</span> / ${target} Προσλήψεις
+          </div>
+        </div>
+        <div class="flex justify-between items-center mb-3 ${lockColor} rounded p-2">
+          <label class="text-sm font-medium text-gray-700 flex items-center">
+            Στόχος:
+            <input type="number" value="${target}" min="0"
+              data-key="${key}"
+              class="w-16 ml-2 p-1 border rounded text-center"
+              ${readOnlyMode ? 'disabled' : ''}
+              onchange="handleTarget(this)">
+          </label>
+          <button onclick="handleAdd('${key}')"
+            class="px-3 py-1 text-sm font-semibold rounded ${isLocked||readOnlyMode ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-500 text-white hover:bg-green-600'}"
+            ${isLocked||readOnlyMode ? 'disabled' : ''}>
+            + Νέος Υποψήφιος
+          </button>
+        </div>
+        <div id="list-${key}" class="space-y-2"></div>
+      `;
 
-        row.innerHTML += `
-            <div class="col-span-6 sm:col-span-3">
-                <select data-profile-key="${profileKey}" data-candidate-index="${index}"
-                    class="status-select w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
-                    onchange="handleStatusChange(this)"
-                    ${ (isLocked && candidate.status !== 'Accepted') || readOnlyMode ? 'disabled' : ''}>
-                    <option value="NoStatus" ${candidate.status === 'NoStatus' ? 'selected' : ''}>Αναμονή</option>
-                    <option value="Interviewing" ${candidate.status === 'Interviewing' ? 'selected' : ''}>Σε Συνέντευξη</option>
-                    <option value="Accepted" ${candidate.status === 'Accepted' ? 'selected' : ''}>Προσλήφθηκε</option>
-                    <option value="Rejected" ${candidate.status === 'Rejected' ? 'selected' : ''}>Απορρίφθηκε</option>
-                </select>
-            </div>`;
-
-        row.innerHTML += `
-            <div class="col-span-6 sm:col-span-3">
-                <input type="text" value="${candidate.comment ?? ''}" data-profile-key="${profileKey}" data-candidate-index="${index}"
-                    class="candidate-input w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm transition"
-                    placeholder="Σημειώσεις"
-                    ${readOnlyMode ? 'disabled' : ''}
-                    onchange="handleCommentChange(this.dataset.profileKey, this.dataset.candidateIndex, this.value)">
-            </div>`;
-
-        row.innerHTML += `
-            <div class="col-span-12 sm:col-span-2 flex justify-end">
-                <button onclick="handleDeleteCandidate('${profileKey}', ${index})"
-                    class="p-2 ${readOnlyMode ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-red-100 text-red-600 hover:bg-red-200'} rounded-lg transition text-xs font-semibold"
-                    ${readOnlyMode ? 'disabled' : ''}>
-                    Διαγραφή
-                </button>
-            </div>`;
-
-        return row;
+      const list = div.querySelector(`#list-${key}`);
+      candidates.forEach((c, i) => list.appendChild(createCandidateRow(key, c, i, isLocked)));
+      return div;
     }
 
-    function createProfileContainer(profileKey, profile) {
-        const container = document.createElement('div');
-        container.className = `bg-white border border-gray-200 rounded-xl shadow-lg p-4 md:p-6 mb-8`;
+    function createCandidateRow(key, c, i, isLocked) {
+      const row = document.createElement('div');
+      row.className = 'grid grid-cols-12 gap-2 items-center p-2 border-l-4 rounded-lg border-gray-200 hover:bg-gray-50';
+      row.innerHTML = `
+        <div class="col-span-4 font-medium text-gray-800" contenteditable="${!readOnlyMode}" onblur="handleName('${key}',${i},this.textContent,this)">${c.name}</div>
+        <div class="col-span-3">
+          <select data-key="${key}" data-index="${i}" class="w-full border p-1 rounded text-sm" onchange="handleStatus(this)" ${readOnlyMode?'disabled':''}>
+            <option value="NoStatus" ${c.status==='NoStatus'?'selected':''}>Αναμονή</option>
+            <option value="Interviewing" ${c.status==='Interviewing'?'selected':''}>Σε Συνέντευξη</option>
+            <option value="Accepted" ${c.status==='Accepted'?'selected':''}>Προσλήφθηκε</option>
+            <option value="Rejected" ${c.status==='Rejected'?'selected':''}>Απορρίφθηκε</option>
+          </select>
+        </div>
+        <div class="col-span-4">
+          <input type="text" value="${c.comment}" class="w-full border p-1 rounded text-sm" onchange="handleComment('${key}',${i},this.value)" ${readOnlyMode?'disabled':''}>
+        </div>
+        <div class="col-span-1 text-right">
+          <button onclick="handleDelete('${key}',${i})" class="text-xs bg-red-100 text-red-600 px-2 py-1 rounded hover:bg-red-200" ${readOnlyMode?'disabled':''}>✕</button>
+        </div>
+      `;
+      return row;
+    }
 
-        const candidates = Array.isArray(profile.candidates) ? profile.candidates : [];
-        const acceptedCount = candidates.filter(c => c.status === 'Accepted').length;
-        const target = parseInt(profile.targetCount, 10) || 0;
-        const isLocked = acceptedCount >= target && target > 0;
+    function handleStatus(el){ profilesData[el.dataset.key].candidates[el.dataset.index].status = el.value; renderApp(); saveData(); }
+    function handleComment(k,i,v){ profilesData[k].candidates[i].comment = v; saveData(); }
+    function handleName(k,i,v,el){ const n=v.trim(); if(n){profilesData[k].candidates[i].name=n;saveData();}else el.textContent=profilesData[k].candidates[i].name;}
+    function handleTarget(el){ profilesData[el.dataset.key].targetCount=String(parseInt(el.value,10)||0); renderApp(); saveData(); }
+    function handleAdd(k){ const p=profilesData[k]; const name=prompt('Όνομα νέου υποψηφίου:',''); if(name!==null){p.candidates.push({name:name.trim()||'Νέος Υποψήφιος',comment:'',status:'NoStatus'});renderApp();saveData();}}
+    function handleDelete(k,i){ profilesData[k].candidates.splice(i,1); renderApp(); saveData(); }
 
-        const lockClass = isLocked ? 'bg-red-50 border-red-300' : 'bg-green-50 border-green-300';
-        const progressColor = acceptedCount >= target ? 'bg-green-500' : (acceptedCount > 0 ? 'bg-yellow-500' : 'bg-blue-500');
-        const progressWidth = target > 0 ? Math.min(100, (acceptedCount / target) * 100) : 0;
-
-        container.innerHTML = `
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-3 mb-4">
-                <h2 class="text-2xl font-bold text-gray-800">${profile.title}</h2>
-                <div class="flex items-center space-x-4 mt-2 sm:mt-0">
-                    <label class="text-sm font-medium text-gray-600 flex items-center">
-                        Στόχος:
-                        <input type="number" value="${target}" min="0" data-profile-key="${profileKey}"
-                            class="w-16 ml-2 p-1 border ${lockClass} rounded-lg text-center font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                            ${readOnlyMode ? 'disabled' : ''}
-                            onchange="handleTargetChange(this)">
-                    </label>
-                    <div class="text-sm font-medium text-gray-700 w-32">
-                        <span class="font-bold text-lg text-blue-600">${acceptedCount}</span> / ${target} Προσλήψεις
-                        <div class="w-full bg-gray-200 rounded-full h-2.5 mt-1">
-                            <div class="${progressColor} h-2.5 rounded-full" style="width: ${progressWidth}%"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="flex justify-between items-center mb-4 p-2 ${lockClass} rounded-lg">
-                <p class="text-sm font-semibold text-gray-700">Λίστα Υποψηφίων:</p>
-                <button onclick="handleAddCandidate('${profileKey}')"
-                    class="px-4 py-2 text-sm font-semibold rounded-lg shadow-md transition
-                    ${isLocked || readOnlyMode ? 'bg-gray-400 text-gray-700 cursor-not-allowed' : 'bg-green-500 text-white hover:bg-green-600'}"
-                    ${isLocked || readOnlyMode ? 'disabled' : ''}>
+    window.onload = () => initFirebase();
+  </script>
+</body>
+</html>
