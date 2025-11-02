@@ -2,241 +2,155 @@
 <html lang="el">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Παρακολούθηση Προφίλ Υποψηφίων</title>
-
-  <!-- Firebase SDK (Compat) -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Recruitment Tracker — Diagnostics</title>
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
-
-  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    body { font-family: 'Inter', sans-serif; background-color: #f9fafb; }
-    .candidate-input { transition: all 0.2s ease-in-out; }
-    .status-select { color: #1f2937; background: #fff; border: 1px solid #d1d5db; }
-  </style>
 </head>
-<body class="p-6">
-  <div class="max-w-6xl mx-auto">
-    <header class="mb-6 border-b pb-4 border-blue-200">
-      <h1 class="text-3xl font-extrabold text-blue-700">
-        Παρακολούθηση Προφίλ Υποψηφίων
-      </h1>
-      <p id="auth-status" class="text-sm text-gray-500 mt-1">Αρχικοποίηση...</p>
-    </header>
+<body class="bg-gray-50 p-6">
+  <div class="max-w-5xl mx-auto space-y-4">
+    <h1 class="text-3xl font-extrabold text-blue-700">Παρακολούθηση Προφίλ Υποψηφίων</h1>
+    <div class="p-4 bg-white rounded-lg shadow">
+      <h2 class="font-semibold text-gray-800 mb-2">Διαγνωστικά</h2>
+      <pre id="log" class="text-sm bg-gray-100 p-3 rounded overflow-auto h-60"></pre>
+    </div>
 
-    <div id="banner" class="hidden mb-4 p-3 rounded-lg text-sm"></div>
-
-    <div id="profiles-list" class="hidden"></div>
-
-    <div id="loading-message" class="text-center py-12 text-lg text-gray-600 font-semibold">
-      Σύνδεση επιτυχής. Αναμονή δεδομένων...
+    <div id="banner" class="hidden p-3 rounded text-sm"></div>
+    <div id="app" class="hidden p-4 bg-white rounded-lg shadow">
+      <p id="auth-status" class="text-sm text-gray-600 mb-2">Auth: …</p>
+      <p id="db-status" class="text-sm text-gray-600 mb-4">DB: …</p>
+      <div id="content" class="text-gray-800">OK, είμαστε συνδεδεμένοι. Τα δεδομένα θα φανούν εδώ.</div>
     </div>
   </div>
 
-  <script>
-    let app, db, auth;
-    let userId = 'default-user';
-    let isDataLoaded = false;
-    let readOnlyMode = false;
+<script>
+const logEl = document.getElementById('log');
+function log(...args){ const line = args.map(a => typeof a==='object'? JSON.stringify(a): String(a)).join(' '); logEl.textContent += line + '\n'; console.log(...args); }
+function setBanner(text, cls){ const b=document.getElementById('banner'); b.textContent=text; b.className=`p-3 rounded text-sm ${cls}`; b.classList.remove('hidden'); }
 
-    // --- FIREBASE CONFIG (Team tracker project) ---
-    const firebaseConfig = {
-      apiKey: "AIzaSyAXFlEK9ehNqUSbHE2DFGt4tE0uVll7WQs",
-      authDomain: "team-tracker-c123a.firebaseapp.com",
-      databaseURL: "https://team-tracker-c123a-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "team-tracker-c123a",
-      storageBucket: "team-tracker-c123a.appspot.com",
-      messagingSenderId: "201123283369",
-      appId: "1:201123283369:web:ae0c28d6d8a637aa0404b8"
-    };
-    const publicPath = '/recruitment-profiles';
+const firebaseConfig = {
+  apiKey: "AIzaSyAXFlEK9ehNqUSbHE2DFGt4tE0uVll7WQs",
+  authDomain: "team-tracker-c123a.firebaseapp.com",
+  databaseURL: "https://team-tracker-c123a-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "team-tracker-c123a",
+  storageBucket: "team-tracker-c123a.appspot.com",
+  messagingSenderId: "201123283369",
+  appId: "1:201123283369:web:ae0c28d6d8a637aa0404b8"
+};
 
-    const defaultProfilesData = {
-      frontend: { title: 'Frontend Developer', targetCount: '1', candidates: [
-        { name: 'Αραμπαντζής', comment: 'Καλό προφίλ, ενδιαφέρον σε React.', status: 'Accepted' },
-        { name: 'Κυρώσης', comment: 'Αδύναμο portfolio. Χρειάζεται βελτίωση.', status: 'Rejected' }
-      ]},
-      backend: { title: 'Backend Developer', targetCount: '2', candidates: [
-        { name: 'Γερουτσκής', comment: 'Εμπειρία σε Java/Spring.', status: 'NoStatus' },
-        { name: 'Τάτσης', comment: 'Python/Django, εξαιρετικές συστάσεις.', status: 'Interviewing' }
-      ]},
-      teamlead: { title: 'SW Team Lead', targetCount: '1', candidates: [
-        { name: 'Χρυσοδούλου', comment: 'Πολύ έμπειρος σε διαχείριση ομάδας.', status: 'Accepted' },
-        { name: 'Δήμου', comment: 'Ισχυρό τεχνικό υπόβαθρο.', status: 'Rejected' }
-      ]},
-      architect: { title: 'System Architect', targetCount: '1', candidates: [
-        { name: 'Μπαμπλάδιμος', comment: 'Πολύ καλή συνολική εικόνα συστημάτων.', status: 'NoStatus' }
-      ]},
-      devops: { title: 'DevOps Engineer', targetCount: '1', candidates: [
-        { name: 'Τριανταφυλλόπουλος', comment: 'Ισχυρή εμπειρία σε Kubernetes.', status: 'NoStatus' }
-      ]},
-      other: { title: 'Other Profiles', targetCount: '1', candidates: [
-        { name: 'Πρόγιας', comment: 'Διαθέσιμος για άλλα projects.', status: 'NoStatus' },
-        { name: 'Βενιανάκης', comment: '', status: 'NoStatus' }
-      ]},
-      aiengineers: { title: 'AI Engineers', targetCount: '2', candidates: [] }
-    };
+const defaultData = {
+  frontend:{title:'Frontend Developer',targetCount:'1',candidates:[
+    {name:'Αραμπαντζής',comment:'Καλό προφίλ, ενδιαφέρον σε React.',status:'Accepted'},
+    {name:'Κυρώσης',comment:'Αδύναμο portfolio.',status:'Rejected'}
+  ]},
+  backend:{title:'Backend Developer',targetCount:'2',candidates:[
+    {name:'Γερουτσκής',comment:'Java/Spring',status:'NoStatus'},
+    {name:'Τάτσης',comment:'Python/Django',status:'Interviewing'}
+  ]},
+  teamlead:{title:'SW Team Lead',targetCount:'1',candidates:[
+    {name:'Χρυσοδούλου',comment:'Έμπειρος',status:'Accepted'}
+  ]},
+  architect:{title:'System Architect',targetCount:'1',candidates:[
+    {name:'Μπαμπλάδιμος',comment:'Καλή εικόνα',status:'NoStatus'}
+  ]},
+  devops:{title:'DevOps Engineer',targetCount:'1',candidates:[
+    {name:'Τριανταφυλλόπουλος',comment:'Kubernetes',status:'NoStatus'}
+  ]},
+  other:{title:'Other Profiles',targetCount:'1',candidates:[
+    {name:'Πρόγιας',comment:'Διαθέσιμος',status:'NoStatus'}
+  ]},
+  aiengineers:{title:'AI Engineers',targetCount:'2',candidates:[]}
+};
 
-    const authStatus = document.getElementById('auth-status');
-    const banner = document.getElementById('banner');
-    const profilesList = document.getElementById('profiles-list');
-    const loadingMsg = document.getElementById('loading-message');
+const AUTH = { ok:false, err:null };
+const DB   = { ok:false, err:null };
+const PATH = '/recruitment-profiles';
 
-    // Banner helper
-    function setBanner(text, cls) {
-      banner.textContent = text;
-      banner.className = `mb-4 p-3 rounded-lg text-sm ${cls}`;
-      banner.classList.remove('hidden');
-    }
+let app, db, auth;
+let profilesData = null;
 
-    // Firebase init
-    async function initFirebase() {
-      try {
-        app = firebase.initializeApp(firebaseConfig);
-        db = app.database();
-        auth = app.auth();
+(async function main(){
+  try {
+    app = firebase.initializeApp(firebaseConfig);
+    db  = app.database();
+    auth= app.auth();
+    log('Firebase initialized.');
+  } catch(e){
+    log('Init error:', e);
+    setBanner('ΣΦΑΛΜΑ Firebase init: '+(e.message||e), 'bg-red-100 text-red-800 border border-red-300');
+    return;
+  }
 
-        auth.onAuthStateChanged(async (user) => {
-          if (user) {
-            userId = user.uid;
-            authStatus.textContent = `Σύνδεση: ${userId.substring(0, 8)}...`;
-            loadData();
-          } else {
-            try {
-              await auth.signInAnonymously();
-            } catch (e) {
-              console.error("Anonymous Sign-in Failed:", e);
-              authStatus.textContent = `ΣΦΑΛΜΑ: ${e.code || e.message}`;
-              readOnlyMode = true;
-              profilesData = JSON.parse(JSON.stringify(defaultProfilesData));
-              isDataLoaded = true;
-              loadingMsg.classList.add('hidden');
-              profilesList.classList.remove('hidden');
-              setBanner(
-                `Λειτουργία προβολής μόνο. Ενεργοποίησε Anonymous Sign-in & Authorized domains.`,
-                'bg-yellow-100 text-yellow-800 border border-yellow-300'
-              );
-              renderApp();
-            }
-          }
-        });
-      } catch (err) {
-        console.error("Firebase Init Error:", err);
-        authStatus.textContent = `ΣΦΑΛΜΑ Firebase: ${err.message}`;
+  auth.onAuthStateChanged(async (user)=>{
+    if(user){
+      AUTH.ok = true; AUTH.err = null;
+      document.getElementById('auth-status').textContent = 'Auth: OK ('+user.uid.substring(0,8)+'…)';
+      log('Auth OK, uid:', user.uid);
+      await startDB();
+    }else{
+      try{
+        log('Signing in anonymously…');
+        await auth.signInAnonymously();
+      }catch(e){
+        AUTH.ok = false; AUTH.err = e;
+        log('Anonymous sign-in failed:', e);
+        setBanner('ΣΦΑΛΜΑ ανώνυμης σύνδεσης: '+(e.code||e.message), 'bg-red-100 text-red-800 border border-red-300');
       }
     }
+  });
+})();
 
-    function loadData() {
-      const dbRef = db.ref(publicPath);
-      dbRef.on('value', async (snapshot) => {
-        if (snapshot.exists()) {
-          profilesData = snapshot.val();
-          isDataLoaded = true;
-          loadingMsg.classList.add('hidden');
-          profilesList.classList.remove('hidden');
-          renderApp();
-        } else {
-          await db.ref(publicPath).set(defaultProfilesData);
-        }
-      }, (error) => {
-        console.error("RTDB error:", error);
-        readOnlyMode = true;
-        profilesData = JSON.parse(JSON.stringify(defaultProfilesData));
-        isDataLoaded = true;
-        loadingMsg.classList.add('hidden');
-        profilesList.classList.remove('hidden');
-        setBanner(`Αποτυχία σύνδεσης DB: ${error.message}`, 'bg-red-100 text-red-800 border border-red-300');
-        renderApp();
-      });
+async function startDB(){
+  document.getElementById('app').classList.remove('hidden');
+
+  // Health check: .info/connected
+  db.ref('.info/connected').on('value', snap=>{
+    log('RTDB .info/connected =', snap.val());
+  });
+
+  // Try to read the path
+  db.ref(PATH).once('value').then(async snap=>{
+    if(snap.exists()){
+      DB.ok = true; DB.err = null;
+      profilesData = snap.val();
+      document.getElementById('db-status').textContent='DB: OK (data exists)';
+      log('Data exists at', PATH);
+      attachLiveListener();
+    }else{
+      log('No data at path, attempting to seed defaults…');
+      try{
+        await db.ref(PATH).set(defaultData);
+        document.getElementById('db-status').textContent='DB: OK (seeded defaults)';
+        attachLiveListener();
+      }catch(e){
+        DB.ok = false; DB.err = e;
+        document.getElementById('db-status').textContent='DB: ERROR seeding';
+        log('Seed write failed:', e);
+        setBanner('DB write αποτυχία: '+(e.code||e.message)+' — Έλεγξε Rules & ότι υπάρχει Realtime Database instance.', 'bg-yellow-100 text-yellow-800 border border-yellow-300');
+      }
     }
+  }).catch(e=>{
+    DB.ok=false; DB.err=e;
+    document.getElementById('db-status').textContent='DB: ERROR read';
+    log('Initial read failed:', e);
+    setBanner('DB read αποτυχία: '+(e.code||e.message)+' — Συνήθως είναι Rules ή λάθος databaseURL.', 'bg-yellow-100 text-yellow-800 border border-yellow-300');
+  });
+}
 
-    function saveData() {
-      if (readOnlyMode) return;
-      db.ref(publicPath).set(profilesData)
-        .then(() => console.log("Data saved"))
-        .catch(e => console.error("Save error:", e));
+function attachLiveListener(){
+  db.ref(PATH).on('value', snap=>{
+    log('Live update fired. exists=', snap.exists());
+    if(snap.exists()){
+      profilesData = snap.val();
+      document.getElementById('content').textContent = 'Φορτώθηκαν '+Object.keys(profilesData).length+' προφίλ.';
     }
-
-    function renderApp() {
-      profilesList.innerHTML = '';
-      Object.keys(profilesData).forEach(key => {
-        profilesList.appendChild(createProfileCard(key, profilesData[key]));
-      });
-    }
-
-    function createProfileCard(key, profile) {
-      const div = document.createElement('div');
-      const candidates = profile.candidates || [];
-      const accepted = candidates.filter(c => c.status === 'Accepted').length;
-      const target = parseInt(profile.targetCount, 10) || 0;
-      const isLocked = accepted >= target && target > 0;
-      const lockColor = isLocked ? 'bg-red-50 border-red-300' : 'bg-green-50 border-green-300';
-
-      div.className = 'bg-white border border-gray-200 rounded-xl shadow p-4 mb-6';
-      div.innerHTML = `
-        <div class="flex justify-between items-center border-b pb-2 mb-3">
-          <h2 class="text-xl font-bold text-gray-800">${profile.title}</h2>
-          <div class="text-sm text-gray-700">
-            <span class="font-semibold text-blue-600">${accepted}</span> / ${target} Προσλήψεις
-          </div>
-        </div>
-        <div class="flex justify-between items-center mb-3 ${lockColor} rounded p-2">
-          <label class="text-sm font-medium text-gray-700 flex items-center">
-            Στόχος:
-            <input type="number" value="${target}" min="0"
-              data-key="${key}"
-              class="w-16 ml-2 p-1 border rounded text-center"
-              ${readOnlyMode ? 'disabled' : ''}
-              onchange="handleTarget(this)">
-          </label>
-          <button onclick="handleAdd('${key}')"
-            class="px-3 py-1 text-sm font-semibold rounded ${isLocked||readOnlyMode ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-500 text-white hover:bg-green-600'}"
-            ${isLocked||readOnlyMode ? 'disabled' : ''}>
-            + Νέος Υποψήφιος
-          </button>
-        </div>
-        <div id="list-${key}" class="space-y-2"></div>
-      `;
-
-      const list = div.querySelector(`#list-${key}`);
-      candidates.forEach((c, i) => list.appendChild(createCandidateRow(key, c, i, isLocked)));
-      return div;
-    }
-
-    function createCandidateRow(key, c, i, isLocked) {
-      const row = document.createElement('div');
-      row.className = 'grid grid-cols-12 gap-2 items-center p-2 border-l-4 rounded-lg border-gray-200 hover:bg-gray-50';
-      row.innerHTML = `
-        <div class="col-span-4 font-medium text-gray-800" contenteditable="${!readOnlyMode}" onblur="handleName('${key}',${i},this.textContent,this)">${c.name}</div>
-        <div class="col-span-3">
-          <select data-key="${key}" data-index="${i}" class="w-full border p-1 rounded text-sm" onchange="handleStatus(this)" ${readOnlyMode?'disabled':''}>
-            <option value="NoStatus" ${c.status==='NoStatus'?'selected':''}>Αναμονή</option>
-            <option value="Interviewing" ${c.status==='Interviewing'?'selected':''}>Σε Συνέντευξη</option>
-            <option value="Accepted" ${c.status==='Accepted'?'selected':''}>Προσλήφθηκε</option>
-            <option value="Rejected" ${c.status==='Rejected'?'selected':''}>Απορρίφθηκε</option>
-          </select>
-        </div>
-        <div class="col-span-4">
-          <input type="text" value="${c.comment}" class="w-full border p-1 rounded text-sm" onchange="handleComment('${key}',${i},this.value)" ${readOnlyMode?'disabled':''}>
-        </div>
-        <div class="col-span-1 text-right">
-          <button onclick="handleDelete('${key}',${i})" class="text-xs bg-red-100 text-red-600 px-2 py-1 rounded hover:bg-red-200" ${readOnlyMode?'disabled':''}>✕</button>
-        </div>
-      `;
-      return row;
-    }
-
-    function handleStatus(el){ profilesData[el.dataset.key].candidates[el.dataset.index].status = el.value; renderApp(); saveData(); }
-    function handleComment(k,i,v){ profilesData[k].candidates[i].comment = v; saveData(); }
-    function handleName(k,i,v,el){ const n=v.trim(); if(n){profilesData[k].candidates[i].name=n;saveData();}else el.textContent=profilesData[k].candidates[i].name;}
-    function handleTarget(el){ profilesData[el.dataset.key].targetCount=String(parseInt(el.value,10)||0); renderApp(); saveData(); }
-    function handleAdd(k){ const p=profilesData[k]; const name=prompt('Όνομα νέου υποψηφίου:',''); if(name!==null){p.candidates.push({name:name.trim()||'Νέος Υποψήφιος',comment:'',status:'NoStatus'});renderApp();saveData();}}
-    function handleDelete(k,i){ profilesData[k].candidates.splice(i,1); renderApp(); saveData(); }
-
-    window.onload = () => initFirebase();
-  </script>
+  }, e=>{
+    log('Live listener error:', e);
+    setBanner('Listener error: '+(e.code||e.message), 'bg-yellow-100 text-yellow-800 border border-yellow-300');
+  });
+}
+</script>
 </body>
 </html>
