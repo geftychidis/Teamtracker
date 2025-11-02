@@ -15,24 +15,19 @@
     <style>
         body { font-family: 'Inter', sans-serif; }
         .candidate-input { transition: all 0.2s ease-in-out; }
-        .status-select {
-            color: #1f2937; background-color: #ffffff; border: 1px solid #d1d5db;
-        }
-        /* Optional color hints per status (border-left already handled per row) */
-        .status-NoStatus { border-left-color: #f59e0b; }   /* Amber */
-        .status-Interviewing { border-left-color: #3b82f6; }/* Blue */
-        .status-Accepted { border-left-color: #10b981; }   /* Emerald */
-        .status-Rejected { border-left-color: #ef4444; }   /* Red */
+        .status-select { color:#1f2937; background:#fff; border:1px solid #d1d5db; }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen p-4 md:p-8">
 <div id="app-container" class="max-w-6xl mx-auto">
-    <header class="mb-8 border-b pb-4 border-blue-200">
+    <header class="mb-4 border-b pb-4 border-blue-200">
         <h1 class="text-3xl md:text-4xl font-extrabold text-blue-700">
             Παρακολούθηση Προφίλ Υποψηφίων
         </h1>
         <p id="auth-status" class="text-sm text-gray-500 mt-1">Αρχικοποίηση...</p>
     </header>
+
+    <div id="banner" class="hidden mb-4 p-3 rounded-lg text-sm"></div>
 
     <div id="profiles-list" class="hidden"></div>
 
@@ -46,7 +41,6 @@
             <h3 id="modal-title" class="text-xl font-bold mb-4 text-blue-600"></h3>
             <p id="modal-message" class="text-gray-700 mb-6"></p>
             <input type="text" id="modal-input" class="candidate-input w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 hidden" placeholder="Εισάγετε το όνομα του νέου υποψηφίου">
-
             <div class="flex justify-end space-x-3 mt-4">
                 <button id="modal-cancel-btn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition hidden">Άκυρο</button>
                 <button id="modal-ok-btn" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow hover:bg-blue-700 transition">OK</button>
@@ -60,10 +54,7 @@
     let app, db, auth;
     let userId = 'default-user';
     let isDataLoaded = false;
-
-    // Constants (not strictly required but kept for completeness)
-    const appId = 'github-standalone-app';
-    const initialAuthToken = undefined;
+    let readOnlyMode = false; // γίνεται true αν δεν έχουμε άδεια write/read
 
     // Firebase config
     const firebaseConfig = {
@@ -71,16 +62,14 @@
         authDomain: "team-tracker-c123a.firebaseapp.com",
         databaseURL: "https://team-tracker-c123a-default-rtdb.europe-west1.firebasedatabase.app",
         projectId: "team-tracker-c123a",
-        storageBucket: "team-tracker-c123a.firebasestorage.app",
+        storageBucket: "team-tracker-c123a.appspot.com",
         messagingSenderId: "201123283369",
         appId: "1:201123283369:web:ae0c28d6d8a637aa0404b8",
         measurementId: "G-5EHRR21L4W"
     };
 
-    // RTDB path
     const publicPath = `/recruitment-profiles`;
 
-    // Default dataset (7 profiles)
     const defaultProfilesData = {
         'frontend': { title: 'Frontend Developer', targetCount: '1', candidates: [
             { name: 'Αραμπαντζής', comment: 'Καλό προφίλ, ενδιαφέρον σε React.', status: 'Accepted' },
@@ -112,8 +101,9 @@
     const loadingMessage = document.getElementById('loading-message');
     const profilesList   = document.getElementById('profiles-list');
     const authStatusElement = document.getElementById('auth-status');
+    const banner = document.getElementById('banner');
 
-    // Modal elements
+    // Modal
     const modalContainer = document.getElementById('modal-container');
     const modalTitle     = document.getElementById('modal-title');
     const modalMessage   = document.getElementById('modal-message');
@@ -128,10 +118,7 @@
         modalCancelBtn.classList.add('hidden');
         modalContainer.classList.remove('hidden');
         return new Promise(resolve => {
-            modalOkBtn.onclick = () => {
-                modalContainer.classList.add('hidden');
-                resolve(true);
-            };
+            modalOkBtn.onclick = () => { modalContainer.classList.add('hidden'); resolve(true); };
         });
     }
 
@@ -143,28 +130,14 @@
         modalCancelBtn.classList.remove('hidden');
         modalContainer.classList.remove('hidden');
         modalInput.focus();
-
         return new Promise(resolve => {
-            const handleOk = () => {
-                modalContainer.classList.add('hidden');
-                resolve(modalInput.value);
-                cleanup();
-            };
-            const handleCancel = () => {
-                modalContainer.classList.add('hidden');
-                resolve(null);
-                cleanup();
-            };
-            const cleanup = () => {
-                modalOkBtn.onclick = null;
-                modalCancelBtn.onclick = null;
-            };
-            modalOkBtn.onclick = handleOk;
-            modalCancelBtn.onclick = handleCancel;
+            const ok = () => { modalContainer.classList.add('hidden'); resolve(modalInput.value); cleanup(); };
+            const cancel = () => { modalContainer.classList.add('hidden'); resolve(null); cleanup(); };
+            const cleanup = () => { modalOkBtn.onclick = null; modalCancelBtn.onclick = null; };
+            modalOkBtn.onclick = ok; modalCancelBtn.onclick = cancel;
         });
     }
 
-    // Firebase init + auth
     async function initFirebase() {
         try {
             if (!window.firebase) {
@@ -191,71 +164,95 @@
             });
         } catch (error) {
             console.error("Firebase Initialization Error:", error);
-            authStatusElement.textContent = `ΣΦΑΛΜΑ: Αδυναμία σύνδεσης Firebase. Ελέγξτε τα κλειδιά σας. (${error.code || error.message})`;
+            authStatusElement.textContent = `ΣΦΑΛΜΑ Firebase: ${error.code || error.message}`;
         }
     }
 
     async function initializeWithDefaultData() {
         try {
             await db.ref(publicPath).set(defaultProfilesData);
+            return true;
         } catch (error) {
-            console.error("Error writing default data:", error);
-            showMessageBox('Σφάλμα', 'Αποτυχία εγγραφής προεπιλεγμένων δεδομένων στη βάση δεδομένων.');
+            console.error("Default data write failed:", error);
+            return false;
         }
+    }
+
+    function setBanner(text, cls) {
+        banner.textContent = text;
+        banner.className = `mb-4 p-3 rounded-lg text-sm ${cls}`;
+        banner.classList.remove('hidden');
     }
 
     function loadData() {
         const dbRef = db.ref(publicPath);
-        dbRef.on('value', (snapshot) => {
+
+        dbRef.on('value', async (snapshot) => {
             if (snapshot.exists()) {
                 profilesData = snapshot.val();
+                readOnlyMode = false;
+                banner.classList.add('hidden');
                 loadingMessage.classList.add('hidden');
-                isDataLoaded = true;
                 profilesList.classList.remove('hidden');
+                isDataLoaded = true;
                 renderApp();
             } else {
-                initializeWithDefaultData();
-                loadingMessage.classList.remove('hidden');
-                profilesList.classList.add('hidden');
+                // Προσπάθεια αρχικοποίησης
+                const ok = await initializeWithDefaultData();
+                if (!ok) {
+                    // Fallback σε local read-only προβολή
+                    readOnlyMode = true;
+                    profilesData = JSON.parse(JSON.stringify(defaultProfilesData));
+                    setBanner('Λειτουργία προβολής μόνο (no DB access). Ελέγξτε Anonymous sign-in και κανόνες RTDB για το /recruitment-profiles.', 'bg-yellow-100 text-yellow-800 border border-yellow-300');
+                    loadingMessage.classList.add('hidden');
+                    profilesList.classList.remove('hidden');
+                    isDataLoaded = true;
+                    renderApp();
+                }
             }
         }, (error) => {
             console.error("RTDB Listener Error:", error);
-            showMessageBox('Σφάλμα Δεδομένων', `Αδυναμία φόρτωσης δεδομένων: ${error.message}. Ελέγξτε τους κανόνες (rules).`);
+            readOnlyMode = true;
+            profilesData = JSON.parse(JSON.stringify(defaultProfilesData));
+            setBanner(`Σφάλμα ανάγνωσης DB: ${error.message}. Προβολή τοπικών δεδομένων.`, 'bg-red-100 text-red-800 border border-red-300');
+            loadingMessage.classList.add('hidden');
+            profilesList.classList.remove('hidden');
+            isDataLoaded = true;
+            renderApp();
         });
     }
 
     function saveData() {
-        if (!db || !isDataLoaded) {
-            console.warn("Database not ready or data not loaded yet. Skipping save.");
+        if (readOnlyMode) {
+            setBanner('Αποθήκευση απενεργοποιημένη (read-only). Ρύθμισε κανόνες/Anonymous sign-in και κάνε refresh.', 'bg-yellow-100 text-yellow-800 border border-yellow-300');
             return;
         }
-        db.ref(publicPath).set(profilesData)
-            .then(() => console.log("Data saved successfully."))
-            .catch(error => {
-                console.error("Error saving data:", error);
-                showMessageBox('Σφάλμα Αποθήκευσης', `Αδυναμία αποθήκευσης: ${error.message}`);
-            });
+        if (!db || !isDataLoaded) return;
+        db.ref(publicPath).set(profilesData).catch(error => {
+            console.error("Save error:", error);
+            setBanner(`Αποτυχία αποθήκευσης: ${error.message}`, 'bg-red-100 text-red-800 border border-red-300');
+        });
     }
 
     function renderApp() {
         profilesList.innerHTML = '';
-        const profileKeys = Object.keys(profilesData);
-        profileKeys.forEach(profileKey => {
-            profilesList.appendChild(createProfileContainer(profileKey, profilesData[profileKey]));
+        Object.keys(profilesData).forEach(k => {
+            profilesList.appendChild(createProfileContainer(k, profilesData[k]));
         });
     }
 
     function createCandidateRow(profileKey, candidate, index, isLocked) {
         const row = document.createElement('div');
-        row.className = `candidate-row grid grid-cols-12 gap-3 items-center p-3 border-l-4 rounded-lg hover:bg-gray-50 transition ${isLocked && candidate.status === 'Accepted' ? 'border-green-600' : 'border-gray-300'}`;
+        row.className = `grid grid-cols-12 gap-3 items-center p-3 border-l-4 rounded-lg hover:bg-gray-50 transition ${isLocked && candidate.status === 'Accepted' ? 'border-green-600' : 'border-gray-300'}`;
 
-        row.innerHTML += `<div class="col-span-12 sm:col-span-4 font-medium text-gray-800 truncate" contenteditable="true" onblur="handleNameChange('${profileKey}', ${index}, this.textContent, this)">${candidate.name}</div>`;
+        row.innerHTML += `<div class="col-span-12 sm:col-span-4 font-medium text-gray-800 truncate" contenteditable="${!readOnlyMode}" onblur="handleNameChange('${profileKey}', ${index}, this.textContent, this)">${candidate.name}</div>`;
 
         row.innerHTML += `
             <div class="col-span-6 sm:col-span-3">
                 <select data-profile-key="${profileKey}" data-candidate-index="${index}"
                     class="status-select w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
-                    onchange="handleStatusChange(this)" ${isLocked && candidate.status !== 'Accepted' ? 'disabled' : ''}>
+                    onchange="handleStatusChange(this)"
+                    ${ (isLocked && candidate.status !== 'Accepted') || readOnlyMode ? 'disabled' : ''}>
                     <option value="NoStatus" ${candidate.status === 'NoStatus' ? 'selected' : ''}>Αναμονή</option>
                     <option value="Interviewing" ${candidate.status === 'Interviewing' ? 'selected' : ''}>Σε Συνέντευξη</option>
                     <option value="Accepted" ${candidate.status === 'Accepted' ? 'selected' : ''}>Προσλήφθηκε</option>
@@ -268,13 +265,15 @@
                 <input type="text" value="${candidate.comment ?? ''}" data-profile-key="${profileKey}" data-candidate-index="${index}"
                     class="candidate-input w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm transition"
                     placeholder="Σημειώσεις"
+                    ${readOnlyMode ? 'disabled' : ''}
                     onchange="handleCommentChange(this.dataset.profileKey, this.dataset.candidateIndex, this.value)">
             </div>`;
 
         row.innerHTML += `
             <div class="col-span-12 sm:col-span-2 flex justify-end">
                 <button onclick="handleDeleteCandidate('${profileKey}', ${index})"
-                    class="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition text-xs font-semibold">
+                    class="p-2 ${readOnlyMode ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-red-100 text-red-600 hover:bg-red-200'} rounded-lg transition text-xs font-semibold"
+                    ${readOnlyMode ? 'disabled' : ''}>
                     Διαγραφή
                 </button>
             </div>`;
@@ -284,7 +283,7 @@
 
     function createProfileContainer(profileKey, profile) {
         const container = document.createElement('div');
-        container.className = `profile-container bg-white border border-gray-200 rounded-xl shadow-lg p-4 md:p-6 mb-8`;
+        container.className = `bg-white border border-gray-200 rounded-xl shadow-lg p-4 md:p-6 mb-8`;
 
         const candidates = Array.isArray(profile.candidates) ? profile.candidates : [];
         const acceptedCount = candidates.filter(c => c.status === 'Accepted').length;
@@ -296,13 +295,14 @@
         const progressWidth = target > 0 ? Math.min(100, (acceptedCount / target) * 100) : 0;
 
         container.innerHTML = `
-            <div class="profile-header flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-3 mb-4">
-                <h2 class="profile-title text-2xl font-bold text-gray-800">${profile.title}</h2>
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-3 mb-4">
+                <h2 class="text-2xl font-bold text-gray-800">${profile.title}</h2>
                 <div class="flex items-center space-x-4 mt-2 sm:mt-0">
                     <label class="text-sm font-medium text-gray-600 flex items-center">
                         Στόχος:
                         <input type="number" value="${target}" min="0" data-profile-key="${profileKey}"
-                            class="target-input w-16 ml-2 p-1 border ${lockClass} rounded-lg text-center font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                            class="w-16 ml-2 p-1 border ${lockClass} rounded-lg text-center font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                            ${readOnlyMode ? 'disabled' : ''}
                             onchange="handleTargetChange(this)">
                     </label>
                     <div class="text-sm font-medium text-gray-700 w-32">
@@ -317,99 +317,5 @@
                 <p class="text-sm font-semibold text-gray-700">Λίστα Υποψηφίων:</p>
                 <button onclick="handleAddCandidate('${profileKey}')"
                     class="px-4 py-2 text-sm font-semibold rounded-lg shadow-md transition
-                    ${isLocked ? 'bg-gray-400 text-gray-700 cursor-not-allowed' : 'bg-green-500 text-white hover:bg-green-600'}"
-                    ${isLocked ? 'disabled' : ''}>
-                    + Νέος Υποψήφιος
-                </button>
-            </div>
-            <div id="list-${profileKey}" class="list-container space-y-3"></div>
-        `;
-
-        const listDiv = container.querySelector(`#list-${profileKey}`);
-        candidates.forEach((candidate, index) => {
-            const row = createCandidateRow(profileKey, candidate, index, isLocked);
-            listDiv.appendChild(row);
-        });
-
-        return container;
-    }
-
-    // Global handlers (referenced inline by DOM)
-    function handleStatusChange(element) {
-        const profileKey = element.dataset.profileKey;
-        const candidateIndex = parseInt(element.dataset.candidateIndex, 10);
-        const newStatus = element.value;
-        profilesData[profileKey].candidates[candidateIndex].status = newStatus;
-        renderApp();   // immediate UI refresh
-        saveData();    // persist
-    }
-
-    function handleTargetChange(element) {
-        const profileKey = element.dataset.profileKey;
-        const newTarget = parseInt(element.value, 10) || 0;
-        profilesData[profileKey].targetCount = newTarget.toString();
-        renderApp();
-        saveData();
-    }
-
-    function handleNameChange(profileKey, candidateIndex, newName, element) {
-        const trimmedName = (newName || '').trim();
-        const originalName = profilesData[profileKey].candidates[parseInt(candidateIndex, 10)].name;
-        if (trimmedName && trimmedName !== originalName) {
-            profilesData[profileKey].candidates[parseInt(candidateIndex, 10)].name = trimmedName;
-            renderApp();
-            saveData();
-        } else if (!trimmedName) {
-            element.textContent = originalName;
-        }
-    }
-
-    async function handleAddCandidate(profileKey) {
-        const profile = profilesData[profileKey];
-        const acceptedCount = (profile.candidates || []).filter(c => c.status === 'Accepted').length;
-        const target = parseInt(profile.targetCount, 10) || 0;
-
-        if (acceptedCount >= target && target > 0) {
-            await showMessageBox('Όριο Προσλήψεων',
-                'Η κατηγορία είναι κλειδωμένη (ο στόχος προσλήψεων επιτεύχθηκε). Αυξήστε τον προβλεπόμενο αριθμό για να προσθέσετε νέους υποψηφίους.'
-            );
-            return;
-        }
-
-        const candidateName = await promptForCandidateName('Νέος Υποψήφιος', 'Εισάγετε το όνομα του νέου υποψηφίου:');
-        if (candidateName !== null) {
-            const newCandidate = {
-                name: (candidateName.trim() || 'Νέος Υποψήφιος (Απρόσωπο)'),
-                comment: '',
-                status: 'NoStatus'
-            };
-            profilesData[profileKey].candidates.push(newCandidate);
-            renderApp();
-            saveData();
-        }
-    }
-
-    function handleCommentChange(profileKey, candidateIndex, newComment) {
-        profilesData[profileKey].candidates[parseInt(candidateIndex, 10)].comment = newComment;
-        // Το render δεν είναι απαραίτητο εδώ, αλλά δεν βλάπτει. Κρατάμε μόνο save για να μη «πηδάει» ο κέρσορας.
-        saveData();
-    }
-
-    function handleDeleteCandidate(profileKey, candidateIndex) {
-        profilesData[profileKey].candidates.splice(candidateIndex, 1);
-        renderApp();
-        saveData();
-    }
-
-    window.onload = function() { initFirebase(); };
-
-    // Expose handlers globally (in some browsers strict modules could hide them; here not module, but keep explicit)
-    window.handleStatusChange = handleStatusChange;
-    window.handleTargetChange = handleTargetChange;
-    window.handleNameChange   = handleNameChange;
-    window.handleAddCandidate = handleAddCandidate;
-    window.handleCommentChange= handleCommentChange;
-    window.handleDeleteCandidate = handleDeleteCandidate;
-</script>
-</body>
-</html>
+                    ${isLocked || readOnlyMode ? 'bg-gray-400 text-gray-700 cursor-not-allowed' : 'bg-green-500 text-white hover:bg-green-600'}"
+                    ${isLocked || readOnlyMode ? 'disabled' : ''}>
